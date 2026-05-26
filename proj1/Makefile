@@ -15,6 +15,7 @@ SRC = src/main.c \
       src/app.c  \
       src/render.c \
       src/hud.c \
+      src/input.c \
 	  ../lib/raymap_impl.c
 
 TARGET    = bin/proj1

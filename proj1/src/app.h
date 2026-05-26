@@ -22,7 +22,7 @@
 
 #define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.mp4"
 #define APP_VIDEO_RT_BG         "assets/video/rt_bg.mp4"
-#define APP_VIDEO_RT_FG         "assets/video/rt_fg.mp4"
+#define APP_VIDEO_RT_FG         "assets/video/output.webm"
 
 //--------------------------------------------------------------------------------------
 // Enums
@@ -50,6 +50,7 @@ typedef struct {
 
     // Paramètres temps réel
     float          fgOpacity;        // Opacité vidéo avant [0.0 - 1.0]
+    float          fgSpeed;          // Vitesse video avant
 } SurfaceState;
 
 // État global de l'application
@@ -58,6 +59,7 @@ typedef struct {
     AppMode       mode;             // Mode actif global
     bool          hudVisible;       // Overlay régie visible
     bool          running;          // Boucle principale active
+    float         espValue;
 } AppState;
 
 //--------------------------------------------------------------------------------------

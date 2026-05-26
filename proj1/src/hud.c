@@ -26,10 +26,16 @@ void DrawHUD(const AppState *app)
     DrawText(TextFormat("CALIB : %s", calibStr), 10, APP_SCREEN_HEIGHT - 82, 20, calibColor);
 
     // Opacité fg (temps réel uniquement)
+    //
+    /*
     if (app->mode == MODE_REALTIME) {
         DrawText(TextFormat("FG OPACITY : %.0f%%", app->surf.fgOpacity * 100.0f),
                  10, APP_SCREEN_HEIGHT - 54, 20, WHITE);
     }
+    */
+
+
+    DrawText(TextFormat("FG SPEED : %.2fx", app->surf.fgSpeed), 10, APP_SCREEN_HEIGHT - 54, 20, WHITE);
 
     // FPS
     DrawText(TextFormat("FPS : %d", GetFPS()), 10, APP_SCREEN_HEIGHT - 26, 20, LIGHTGRAY);

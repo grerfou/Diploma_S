@@ -96,6 +96,7 @@ typedef struct {
     const char *codec;              // Codec name (e.g., "h264")
     const char *format;             // Container format (e.g., "mp4")
     bool hasAudio;                  // Audio stream present
+    bool hasAlpha;
     RMV_HWAccelType hwaccel;        // Active hardware acceleration
 } RMV_VideoInfo;
 
@@ -127,6 +128,9 @@ RMVAPI bool RMV_IsVideoLoaded(const RMV_Video *video);
 
 // Settings
 RMVAPI void RMV_SetVideoLoop(RMV_Video *video, bool loop);
+
+// Speed (1.0 = normal, 2.0 double, 0.5 moitié)
+RMVAPI void RMV_SetVideoSpeed(RMV_Video *video, float speed);
 
 #endif // RAYMAPVID_H
 
@@ -199,6 +203,10 @@ struct RMV_Video {
     // Stream info
     int videoStreamIndex;
 
+    int alphaStreamIndex;            // Index stream alpha
+    AVCodecContext *alphaCodecCtx;   // Decodeur stream alpha
+    AVFrame *frameAlpha;             // Frame alpha decodée
+
     // raylib texture
     Texture2D texture;
     uint8_t *rgbBuffer;
@@ -212,12 +220,14 @@ struct RMV_Video {
     const char *codecName;
     const char *formatName;
     bool hasAudio;
+    bool hasAlpha;
 
     // Playback state 
     RMV_PlaybackState state;
     float currentTime;
     bool loop;
     float frameAccumulator;
+    float speed;
 
     // State flags
     bool isLoaded;
@@ -263,6 +273,14 @@ static void rmv_CleanupVideo(RMV_Video *video) {
         av_frame_free(&video->frame);
         // av_frame_free() sets pointer to NULL automatically
     }
+
+    if (video->frameAlpha) {
+        av_frame_free(&video->frameAlpha);
+    }
+
+    if (video->alphaCodecCtx) {
+        avcodec_free_context(&video->alphaCodecCtx);
+    }
     
     // Free packet
     if (video->packet) {
@@ -287,12 +305,17 @@ static bool rmv_CreateTexture(RMV_Video *video){
     if (!video || !video->rgbBuffer) return false;
     if (video->textureCreated) return true;
 
+    TraceLog(LOG_INFO, "RAYMAPVID: Creating texture hasAlpha=%d", video->hasAlpha);
     Image img = {
         .data = video->rgbBuffer,
         .width = video->width,
         .height = video->height,
         .mipmaps = 1,
-        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8
+        //.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8
+        .format = video->hasAlpha 
+                  ? PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
+                  : PIXELFORMAT_UNCOMPRESSED_R8G8B8
+
     };
 
     video->texture = LoadTextureFromImage(img);
@@ -486,7 +509,68 @@ RMVAPI RMV_Video *RMV_LoadVideo(const char *filepath) {
     }
 
     // Determine buffer size for RGB frame
-    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, video->width, video->height, 1);
+    // int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, video->width, video->height, 1);
+    
+    // Détecter canal alpha
+    /*
+    video->hasAlpha = (av_pix_fmt_desc_get(video->codecCtx->pix_fmt) != NULL) &&
+                      (av_pix_fmt_desc_get(video->codecCtx->pix_fmt)->flags & AV_PIX_FMT_FLAG_ALPHA) != 0;
+
+    */
+
+    // Détecter canal alpha via métadonnées VP9
+    video->hasAlpha = false;
+    AVDictionaryEntry *alphaTag = av_dict_get( video->formatCtx->streams[video->videoStreamIndex]->metadata,
+                                    "alpha_mode", NULL, 0);
+    if (alphaTag && strcmp(alphaTag->value, "1") == 0) {
+        video->hasAlpha = true;
+        TraceLog(LOG_INFO, "RAYMAPVID: Alpha channel detected");
+    }
+
+    // Initialiser les champs alpha
+    video->alphaStreamIndex = -1;
+    video->alphaCodecCtx = NULL;
+    video->frameAlpha = NULL;
+
+    // Si alpha détecté, chercher le stream alpha (stream suivant le stream vidéo)
+    if (video->hasAlpha) {
+        for (unsigned int i = 0; i < video->formatCtx->nb_streams; i++) {
+            if ((int)i == video->videoStreamIndex) continue;
+            if (video->formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                video->alphaStreamIndex = (int)i;
+                TraceLog(LOG_INFO, "RAYMAPVID: Alpha stream found at index %d", i);
+                break;
+            }
+        }
+    }
+
+    // Ouvrir le décodeur du stream alpha
+    if (video->alphaStreamIndex >= 0) {
+        AVCodecParameters *alphaParams = video->formatCtx->streams[video->alphaStreamIndex]->codecpar;
+        const AVCodec *alphaCodec = avcodec_find_decoder(alphaParams->codec_id);
+
+        if (alphaCodec) {
+            video->alphaCodecCtx = avcodec_alloc_context3(alphaCodec);
+            if (video->alphaCodecCtx) {
+                avcodec_parameters_to_context(video->alphaCodecCtx, alphaParams);
+                if (avcodec_open2(video->alphaCodecCtx, alphaCodec, NULL) < 0) {
+                    TraceLog(LOG_WARNING, "RAYMAPVID: Failed to open alpha codec");
+                    avcodec_free_context(&video->alphaCodecCtx);
+                    video->alphaCodecCtx = NULL;
+                    video->alphaStreamIndex = -1;
+                } else {
+                    video->frameAlpha = av_frame_alloc();
+                    TraceLog(LOG_INFO, "RAYMAPVID: Alpha decoder opened successfully");
+                }
+            }
+        }
+    }
+
+    enum AVPixelFormat dstFmt = video->hasAlpha ? AV_PIX_FMT_RGBA : AV_PIX_FMT_RGB24;
+
+    // Determine buffer size
+    int numBytes = av_image_get_buffer_size(dstFmt, video->width, video->height, 1);
+    
     if (numBytes <= 0) {
         TraceLog(LOG_ERROR, "RAYMAPVID: Invalid buffer size: %d", numBytes);
         rmv_CleanupVideo(video);
@@ -509,7 +593,8 @@ RMVAPI RMV_Video *RMV_LoadVideo(const char *filepath) {
         video->frameRGB->data,
         video->frameRGB->linesize,
         video->rgbBuffer,
-        AV_PIX_FMT_RGB24,
+        //AV_PIX_FMT_RGB24,
+        dstFmt,
         video->width,
         video->height,
         1  // alignment
@@ -529,7 +614,10 @@ RMVAPI RMV_Video *RMV_LoadVideo(const char *filepath) {
              video->codecCtx->width,
              video->codecCtx->height,
              av_get_pix_fmt_name(video->codecCtx->pix_fmt));
-    TraceLog(LOG_INFO, "  Dest: %dx%d format=RGB24", video->width, video->height);
+    //TraceLog(LOG_INFO, "  Dest: %dx%d format=RGB24", video->width, video->height);
+    TraceLog(LOG_INFO, "  Dest: %dx%d format=%s hasAlpha=%d",
+         video->width, video->height,
+         av_get_pix_fmt_name(dstFmt), video->hasAlpha);
 
     video->swsCtx = sws_getContext(
         video->codecCtx->width,      // src width
@@ -537,7 +625,8 @@ RMVAPI RMV_Video *RMV_LoadVideo(const char *filepath) {
         video->codecCtx->pix_fmt,    // src format
         video->codecCtx->width,      // dst width
         video->codecCtx->height,     // dst height
-        AV_PIX_FMT_RGB24,            // dst format
+        //AV_PIX_FMT_RGB24,            // dst format
+        dstFmt,
         RMV_SWS_FLAGS,              // flags
         NULL,                        // src filter
         NULL,                        // dst filter
@@ -566,6 +655,7 @@ RMVAPI RMV_Video *RMV_LoadVideo(const char *filepath) {
     video->currentTime = 0.0f;
     video->loop = false;
     video->frameAccumulator = 0.0f;
+    video->speed = 1.0f;
 
     TraceLog(LOG_INFO, "RAYMAPVID: Video loaded successfully: %dx%d @ %.2f fps",
              video->width, video->height, video->fps);
@@ -597,6 +687,7 @@ RMVAPI RMV_VideoInfo RMV_GetVideoInfo(const RMV_Video *video) {
     info.codec = video->codecName;
     info.format = video->formatName;
     info.hasAudio = video->hasAudio;
+    info.hasAlpha = video->hasAlpha;
     info.hwaccel = RMV_HWACCEL_NONE;
 
     return info;
@@ -640,7 +731,8 @@ RMVAPI void RMV_UpdateVideo(RMV_Video *video, float deltaTime) {
     }
 
     // Accumulate time
-    video->frameAccumulator += deltaTime;
+    //video->frameAccumulator += deltaTime;
+    video->frameAccumulator += deltaTime * video->speed;
     video->currentTime += deltaTime;
 
     // Calculate frame time based on FPS
@@ -695,9 +787,38 @@ RMVAPI void RMV_UpdateVideo(RMV_Video *video, float deltaTime) {
 
                 // Receive decoded frame
                 ret = avcodec_receive_frame(video->codecCtx, video->frame);
-
+                
                 if (ret == 0){
                     // Frame decoded successfull
+
+                    TraceLog(LOG_INFO, "RAYMAPVID: frame format=%s data[3]=%p",
+                            av_get_pix_fmt_name(video->frame->format),
+                            video->frame->data[3]);
+
+                    TraceLog(LOG_INFO, "RAYMAPVID: nb_side_data=%d nb_extended_buf=%d",
+                            video->frame->nb_side_data,
+                            video->frame->nb_extended_buf);
+
+                    if (video->frame->nb_side_data > 0) {
+                        TraceLog(LOG_INFO, "RAYMAPVID: side_data[0] type=%d",
+                                video->frame->side_data[0]->type);
+                    }
+                    
+                    // Décoder le stream alpha si disponible
+                    if (video->alphaStreamIndex >= 0 && video->alphaCodecCtx && video->frameAlpha) {
+                        // Chercher le packet alpha correspondant
+                        AVPacket *alphaPkt = av_packet_alloc();
+                        if (alphaPkt) {
+                            // Sauvegarder la position
+                            int64_t pos = video->formatCtx->pb ? avio_tell(video->formatCtx->pb) : -1;
+                            (void)pos;
+        
+                            // Envoyer un flush pour synchroniser
+                            avcodec_send_packet(video->alphaCodecCtx, NULL);
+                            avcodec_receive_frame(video->alphaCodecCtx, video->frameAlpha);
+                            av_packet_free(&alphaPkt);
+                        }
+                    }
 
                     // ConvertYUV top RGB
                     sws_scale(
@@ -709,6 +830,19 @@ RMVAPI void RMV_UpdateVideo(RMV_Video *video, float deltaTime) {
                             video->frameRGB->data,
                             video->frameRGB->linesize
                     );
+
+                    // Fusionner le canal alpha dans le buffer RGBA
+                    if (video->hasAlpha && video->frameAlpha && video->frameAlpha->data[0]) {
+                        for (int y = 0; y < video->height; y++) {
+                            for (int x = 0; x < video->width; x++) {
+                                // Position dans le buffer RGBA (4 bytes par pixel)
+                                int rgbaIdx = (y * video->width + x) * 4;
+                                // Position dans la frame alpha (yuv420p, canal Y = luminance = alpha)
+                                int alphaIdx = y * video->frameAlpha->linesize[0] + x;
+                                video->rgbBuffer[rgbaIdx + 3] = video->frameAlpha->data[0][alphaIdx];
+                            }
+                        }
+                    }
 
                     // Update texture with new frame
                     UpdateTexture(video->texture, video->rgbBuffer);
@@ -725,6 +859,14 @@ RMVAPI void RMV_UpdateVideo(RMV_Video *video, float deltaTime) {
                     TraceLog(LOG_ERROR, "RAYMAPVID: Error receiving frame: %s (%d)", rmv_GetFFmpegError(ret), ret);
                     av_packet_unref(video->packet);
                     return;
+                }
+            } else if (video->alphaStreamIndex >= 0 &&
+                     video->packet->stream_index == video->alphaStreamIndex &&
+                     video->alphaCodecCtx && video->frameAlpha) {
+                // Décoder le packet alpha
+                int alphaRet = avcodec_send_packet(video->alphaCodecCtx, video->packet);
+                if (alphaRet == 0) {
+                    avcodec_receive_frame(video->alphaCodecCtx, video->frameAlpha);
                 }
             }
 
@@ -801,6 +943,12 @@ RMVAPI bool RMV_IsVideoPlaying(const RMV_Video *video) {
 
 RMVAPI bool RMV_IsVideoLoaded(const RMV_Video *video) {
     return (video != NULL && video->isLoaded);
+}
+
+RMVAPI void RMV_SetVideoSpeed(RMV_Video *video, float speed) {
+    if (!rmv_ValidateVideo(video, "RMV_SetVideoSpeed")) return;
+    if (speed < 0.0f) speed = 0.0f;
+    video->speed = speed;
 }
 
 #endif // RAYMAPVID_IMPLEMENTATION

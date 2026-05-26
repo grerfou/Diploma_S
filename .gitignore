@@ -1,0 +1,19 @@
+# Vidéos et images
+*.mp4
+*.webm
+*.mov
+*.avi
+*.png
+*.jpg
+*.jpeg
+
+# Build
+bin/
+
+# Logs ASan
+asan.log.*
+valgrind.log
+valgrind_test.log
+
+# Config (optionnel — commente si tu veux versionner les calibrations)
+# config/*.cfg

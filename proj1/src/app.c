@@ -4,6 +4,7 @@
 *   Initialisation, gestion des inputs, update et draw de l'application.
 *
 *******************************************************************************/
+#include "input.h"
 #include "app.h"
 #include <stdio.h>
 
@@ -26,27 +27,7 @@ bool AppInit(AppState *app)
     app->hudVisible = true;
     app->running    = true;
 
-    // --- Surface ---
-    app->surf.surface = RM_CreateSurface(APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT, RM_MAP_HOMOGRAPHY);
-    if (!app->surf.surface) {
-        TraceLog(LOG_ERROR, "APP: Failed to create surface");
-        return false;
-    }
-
-    // Charge la calibration ou recentre par défaut
-    if (!RM_LoadConfig(app->surf.surface, APP_CONFIG)) {
-        TraceLog(LOG_WARNING, "APP: No config found, using default quad");
-        RM_ResetQuad(app->surf.surface, APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT);
-    }
-
-    // Calibration
-    app->surf.calibration = RM_CalibrationDefault(app->surf.surface);
-    app->surf.calibration.enabled = false;
-
-    // Opacité fg par défaut
-    app->surf.fgOpacity = 1.0f;
-
-    // --- Vidéos ---
+    // --- Vidéos en premier ---
     app->surf.videoPrerecorded = RMV_LoadVideo(APP_VIDEO_PRERECORDED);
     if (!app->surf.videoPrerecorded) {
         TraceLog(LOG_ERROR, "APP: Failed to load prerecorded video: %s", APP_VIDEO_PRERECORDED);
@@ -65,15 +46,50 @@ bool AppInit(AppState *app)
         return false;
     }
 
+    // --- Surface avec dimensions de la vidéo ---
+    RMV_VideoInfo info = RMV_GetVideoInfo(app->surf.videoPrerecorded);
+    app->surf.surface = RM_CreateSurface(info.width, info.height, RM_MAP_HOMOGRAPHY);
+    if (!app->surf.surface) {
+        TraceLog(LOG_ERROR, "APP: Failed to create surface");
+        return false;
+    }
+
+    // Charge la calibration ou recentre par défaut
+    if (!RM_LoadConfig(app->surf.surface, APP_CONFIG)) {
+        TraceLog(LOG_WARNING, "APP: No config found, using default quad");
+        //RM_ResetQuad(app->surf.surface, APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT - 500);
+        
+        float scale = (float)APP_SCREEN_HEIGHT / (float)info.height;
+        float w = info.width * scale;
+        float h = (float)APP_SCREEN_HEIGHT;
+        float x = (APP_SCREEN_WIDTH - w) / 2.0f;
+
+        RM_SetQuad(app->surf.surface, (RM_Quad){
+             { x,     0.0f },
+             { x + w, 0.0f },
+             { x + w, h    },
+             { x,     h    }
+        });
+    }
+
+    // Calibration
+    app->surf.calibration = RM_CalibrationDefault(app->surf.surface);
+    app->surf.calibration.enabled = false;
+
+    // Opacité fg par défaut
+    app->surf.fgOpacity = 1.0f;
+    // Speed fg par défault
+    app->surf.fgSpeed = 1.0f;
+    
     // Toutes les vidéos en boucle
-    RMV_SetVideoLoop(app->surf.videoPrerecorded, true);
+    RMV_SetVideoLoop(app->surf.videoPrerecorded, false);
     RMV_SetVideoLoop(app->surf.videoBg, true);
     RMV_SetVideoLoop(app->surf.videoFg, true);
 
     // Démarre la vidéo pré-enregistrée (mode par défaut)
     RMV_PlayVideo(app->surf.videoPrerecorded);
 
-    TraceLog(LOG_INFO, "APP: Initialized successfully");
+    TraceLog(LOG_INFO, "APP: Initialized [surface %dx%d]", info.width, info.height);
     return true;
 }
 
@@ -163,6 +179,26 @@ void AppHandleInput(AppState *app)
         }
     }
 
+    // Opacité fg — touches + et -
+    if (IsKeyDown(KEY_UP)) {
+        app->surf.fgOpacity += 0.01f;
+        if (app->surf.fgOpacity > 1.0f) app->surf.fgOpacity = 1.0f;
+    }
+    if (IsKeyDown(KEY_DOWN)) {
+        app->surf.fgOpacity -= 0.01f;
+        if (app->surf.fgOpacity < 0.0f) app->surf.fgOpacity = 0.0f;
+    }
+
+    // Speed fg 
+    if (IsKeyDown(KEY_RIGHT)) {
+        app->surf.fgSpeed = fminf(app->surf.fgSpeed + 0.01f, 3.0f);
+        RMV_SetVideoSpeed(app->surf.videoFg, app->surf.fgSpeed);
+    }
+    if (IsKeyDown(KEY_LEFT)) {
+        app->surf.fgSpeed = fmaxf(app->surf.fgSpeed - 0.01f, 0.0f);
+        RMV_SetVideoSpeed(app->surf.videoFg, app->surf.fgSpeed);
+    }
+
     // Update calibration (drag corners)
     RM_UpdateCalibration(&app->surf.calibration);
 }
@@ -181,6 +217,22 @@ void AppUpdate(AppState *app, float dt)
         RMV_UpdateVideo(app->surf.videoBg, dt);
         RMV_UpdateVideo(app->surf.videoFg, dt);
     }
+
+    // Switch auto vers REALTIME quand la vidéo pré-enregistrée est terminée
+    if (app->mode == MODE_PRERECORDED &&
+        RMV_GetVideoState(app->surf.videoPrerecorded) == RMV_STATE_STOPPED) {
+        RMV_PlayVideo(app->surf.videoBg);
+        RMV_PlayVideo(app->surf.videoFg);
+        app->mode = MODE_REALTIME;
+        TraceLog(LOG_INFO, "APP: Auto-switch to REALTIME mode");
+    }
+
+    // Lecture donnée esp
+    float espVal;
+    if (InputRead(&espVal)) {
+        app->espValue = espVal;
+        app->surf.fgOpacity = espVal;
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -193,7 +245,7 @@ void AppDraw(AppState *app, float dt)
 
     // --- Dessin dans la surface ---
     RM_BeginSurface(app->surf.surface);
-        ClearBackground(BLACK);
+        ClearBackground(BLANK);
 
         if (app->mode == MODE_PRERECORDED) {
             // Vidéo pré-enregistrée plein cadre
@@ -201,11 +253,18 @@ void AppDraw(AppState *app, float dt)
 
         } else {
             // Fond
-            DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE);
+            //DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE);
 
             // Avant — opacité pilotée
-            unsigned char alpha = (unsigned char)(app->surf.fgOpacity * 255.0f);
-            DrawTexture(RMV_GetVideoTexture(app->surf.videoFg), 0, 0, (Color){ 255, 255, 255, alpha });
+            unsigned char alphaFg = (unsigned char)(app->surf.fgOpacity * 255.0f);
+            //unsigned char alphaBg = (unsigned char)((1.0f - app->surf.fgOpacity) * 255.0f + 100);
+            //unsigned char alphaBg = 255;
+
+            BeginBlendMode(BLEND_ALPHA);
+            //DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, (Color){ 255, 255, 255, alphaBg });
+            DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE );
+            DrawTexture(RMV_GetVideoTexture(app->surf.videoFg), 0, 0, (Color){ 255, 255, 255, alphaFg });
+            EndBlendMode();
 
             // Contenu temps réel additionnel (render.c)
             DrawRealtime(app, dt);
