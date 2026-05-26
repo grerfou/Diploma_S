@@ -57,8 +57,7 @@ bool AppInit(AppState *app)
     // Charge la calibration ou recentre par défaut
     if (!RM_LoadConfig(app->surf.surface, APP_CONFIG)) {
         TraceLog(LOG_WARNING, "APP: No config found, using default quad");
-        //RM_ResetQuad(app->surf.surface, APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT - 500);
-        
+
         float scale = (float)APP_SCREEN_HEIGHT / (float)info.height;
         float w = info.width * scale;
         float h = (float)APP_SCREEN_HEIGHT;
@@ -78,9 +77,9 @@ bool AppInit(AppState *app)
 
     // Opacité fg par défaut
     app->surf.fgOpacity = 1.0f;
-    // Speed fg par défault
+    // Speed fg par défaut
     app->surf.fgSpeed = 1.0f;
-    
+
     // Toutes les vidéos en boucle
     RMV_SetVideoLoop(app->surf.videoPrerecorded, false);
     RMV_SetVideoLoop(app->surf.videoBg, true);
@@ -139,14 +138,12 @@ void AppHandleInput(AppState *app)
     // Switch mode pré-enregistré ↔ temps réel
     if (IsKeyPressed(KEY_TAB)) {
         if (app->mode == MODE_PRERECORDED) {
-            // Passer en temps réel
             RMV_PauseVideo(app->surf.videoPrerecorded);
             RMV_PlayVideo(app->surf.videoBg);
             RMV_PlayVideo(app->surf.videoFg);
             app->mode = MODE_REALTIME;
             TraceLog(LOG_INFO, "APP: Switched to REALTIME mode");
         } else {
-            // Repasser en pré-enregistré
             RMV_StopVideo(app->surf.videoBg);
             RMV_StopVideo(app->surf.videoFg);
             RMV_PlayVideo(app->surf.videoPrerecorded);
@@ -179,7 +176,7 @@ void AppHandleInput(AppState *app)
         }
     }
 
-    // Opacité fg — touches + et -
+    // Opacité fg
     if (IsKeyDown(KEY_UP)) {
         app->surf.fgOpacity += 0.01f;
         if (app->surf.fgOpacity > 1.0f) app->surf.fgOpacity = 1.0f;
@@ -189,7 +186,7 @@ void AppHandleInput(AppState *app)
         if (app->surf.fgOpacity < 0.0f) app->surf.fgOpacity = 0.0f;
     }
 
-    // Speed fg 
+    // Speed fg
     if (IsKeyDown(KEY_RIGHT)) {
         app->surf.fgSpeed = fminf(app->surf.fgSpeed + 0.01f, 3.0f);
         RMV_SetVideoSpeed(app->surf.videoFg, app->surf.fgSpeed);
@@ -227,7 +224,7 @@ void AppUpdate(AppState *app, float dt)
         TraceLog(LOG_INFO, "APP: Auto-switch to REALTIME mode");
     }
 
-    // Lecture donnée esp
+    // Lecture donnée ESP
     float espVal;
     if (InputRead(&espVal)) {
         app->espValue = espVal;
@@ -245,25 +242,28 @@ void AppDraw(AppState *app, float dt)
 
     // --- Dessin dans la surface ---
     RM_BeginSurface(app->surf.surface);
+
         ClearBackground(BLANK);
 
         if (app->mode == MODE_PRERECORDED) {
-            // Vidéo pré-enregistrée plein cadre
-            DrawTexture(RMV_GetVideoTexture(app->surf.videoPrerecorded), 0, 0, WHITE);
-
-        } else {
-            // Fond
-            //DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE);
-
-            // Avant — opacité pilotée
-            unsigned char alphaFg = (unsigned char)(app->surf.fgOpacity * 255.0f);
-            //unsigned char alphaBg = (unsigned char)((1.0f - app->surf.fgOpacity) * 255.0f + 100);
-            //unsigned char alphaBg = 255;
 
             BeginBlendMode(BLEND_ALPHA);
-            //DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, (Color){ 255, 255, 255, alphaBg });
-            DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE );
-            DrawTexture(RMV_GetVideoTexture(app->surf.videoFg), 0, 0, (Color){ 255, 255, 255, alphaFg });
+            DrawTexture(RMV_GetVideoTexture(app->surf.videoPrerecorded), 0, 0, WHITE);
+            EndBlendMode();
+
+        } else {
+
+            unsigned char alphaFg = (unsigned char)(app->surf.fgOpacity * 255.0f);
+
+            // bg opaque en premier
+            BeginBlendMode(BLEND_ALPHA);
+            DrawTexture(RMV_GetVideoTexture(app->surf.videoBg), 0, 0, WHITE);
+            EndBlendMode();
+
+            // fg par-dessus — opacité variable
+            BeginBlendMode(BLEND_ALPHA);
+            DrawTexture(RMV_GetVideoTexture(app->surf.videoFg), 0, 0,
+                        (Color){ 255, 255, 255, alphaFg });
             EndBlendMode();
 
             // Contenu temps réel additionnel (render.c)
@@ -273,9 +273,14 @@ void AppDraw(AppState *app, float dt)
     RM_EndSurface(app->surf.surface);
 
     // --- Dessin à l'écran ---
+    // BLEND_ADDITIVE pour RM_DrawSurface : ignore l'alpha de la render texture
+    // et ajoute les RGB directement — élimine le voile noir causé par les pixels
+    // semi-transparents de la render texture sur le fond noir de l'écran.
     BeginDrawing();
         ClearBackground(BLACK);
+        BeginBlendMode(BLEND_ADDITIVE);
         RM_DrawSurface(app->surf.surface);
+        EndBlendMode();
         RM_DrawCalibration(app->surf.calibration);
         if (app->hudVisible) DrawHUD(app);
     EndDrawing();

@@ -1092,7 +1092,8 @@ RMAPI void RM_DrawSurface(RM_Surface *surface)
     // Draw mesh
     rlDisableDepthTest();
     rlDisableBackfaceCulling();
-    BeginBlendMode(BLEND_ALPHA);
+    //BeginBlendMode(BLEND_ALPHA);
+    BeginBlendMode(4);
     DrawMesh(surface->mesh, surface->material, MatrixIdentity());
     EndBlendMode();    
     rlEnableBackfaceCulling();

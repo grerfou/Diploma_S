@@ -22,7 +22,7 @@
 
 #define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.mp4"
 #define APP_VIDEO_RT_BG         "assets/video/rt_bg.mp4"
-#define APP_VIDEO_RT_FG         "assets/video/output.webm"
+#define APP_VIDEO_RT_FG         "assets/video/output_new.webm"
 
 //--------------------------------------------------------------------------------------
 // Enums
