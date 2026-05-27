@@ -15,5 +15,10 @@ asan.log.*
 valgrind.log
 valgrind_test.log
 
+# ESP-IDF
+esp/build/
+esp/sdkconfig
+esp/sdkconfig.old
+
 # Config (optionnel — commente si tu veux versionner les calibrations)
 # config/*.cfg
