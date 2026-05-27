@@ -85,6 +85,14 @@ bool AppInit(AppState *app)
     RMV_SetVideoLoop(app->surf.videoBg, true);
     RMV_SetVideoLoop(app->surf.videoFg, true);
 
+    // Synchronisation démarrage
+    SyncHandle *sync = SyncOpen(SYNC_ROLE_PROJ1); // PROJ2 pour proj2
+    if (sync) {
+        SyncSignalReady(sync);
+        SyncWaitGo(sync);
+        SyncClose(sync, false);
+    }
+
     // Démarre la vidéo pré-enregistrée (mode par défaut)
     RMV_PlayVideo(app->surf.videoPrerecorded);
 

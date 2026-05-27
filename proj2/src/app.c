@@ -114,6 +114,14 @@ bool AppInit(AppState *app)
         s->fgSpeed   = 1.0f;
     }
 
+    // Synchronisation démarrage
+    SyncHandle *sync = SyncOpen(SYNC_ROLE_PROJ1); // PROJ2 pour proj2
+    if (sync) {
+        SyncSignalReady(sync);
+        SyncWaitGo(sync);
+        SyncClose(sync, false);
+    }
+
     // Démarre la vidéo pré-enregistrée
     RMV_PlayVideo(prerecorded);
 

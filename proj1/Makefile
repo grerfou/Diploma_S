@@ -16,7 +16,8 @@ SRC = src/main.c \
       src/render.c \
       src/hud.c \
       src/input.c \
-	  ../lib/raymap_impl.c
+	  ../lib/raymap_impl.c \
+	  ../shared/sync.c
 
 TARGET    = bin/proj1
 BUILD_DIR = bin
