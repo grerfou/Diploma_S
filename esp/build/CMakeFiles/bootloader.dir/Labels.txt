@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/CMakeFiles/bootloader
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/CMakeFiles/bootloader.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/CMakeFiles/bootloader-complete.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/home/gerfou-usr/Documents/code/Diploma_S/mapping_app/esp/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

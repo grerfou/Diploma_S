@@ -1,0 +1,243 @@
+#==============================================================================
+#   proj1 — Makefile.test
+#   Tests mémoire, comportement et performance
+#
+#   USAGE:
+#       make -f Makefile.test asan       → Build + run avec AddressSanitizer
+#       make -f Makefile.test valgrind   → Build + run avec Valgrind
+#       make -f Makefile.test perf       → Build + run avec perf record
+#       make -f Makefile.test gprof      → Build + run + rapport gprof
+#       make -f Makefile.test report     → Affiche tous les rapports existants
+#       make -f Makefile.test clean      → Supprime tous les binaires de test
+#
+#   DÉPENDANCES:
+#       valgrind    → sudo pacman -S valgrind
+#       perf        → sudo pacman -S perf debuginfod
+#       gprof       → inclus dans binutils
+#==============================================================================
+
+CC     = gcc
+CFLAGS = -Wall -Wextra -std=c99 -I./src -I../lib -Wno-unused-function
+LIBS   = -lraylib -lm -lpthread -ldl -lavcodec -lavformat -lavutil -lswscale
+
+SRC = src/main.c \
+      src/app.c  \
+      src/render.c \
+      src/hud.c \
+      src/input.c \
+      ../lib/raymap_impl.c
+
+BIN_DIR    = bin/test
+REPORT_DIR = reports
+
+# Durée de run automatique (secondes)
+RUN_DURATION = 10
+
+#------------------------------------------------------------------------------
+# Flags par mode
+#------------------------------------------------------------------------------
+
+ASAN_FLAGS    = -fsanitize=address -fsanitize=undefined \
+                -fno-omit-frame-pointer -g -O1
+
+VALGRIND_FLAGS = -g -O0
+
+GPROF_FLAGS   = -pg -O2 -g
+
+PERF_FLAGS    = -O2 -g -fno-omit-frame-pointer
+
+#------------------------------------------------------------------------------
+# Targets
+#------------------------------------------------------------------------------
+
+.PHONY: all asan valgrind perf gprof report clean check-deps
+
+all: check-deps
+	@echo "Usage:"
+	@echo "  make -f Makefile.test asan"
+	@echo "  make -f Makefile.test valgrind"
+	@echo "  make -f Makefile.test perf"
+	@echo "  make -f Makefile.test gprof"
+	@echo "  make -f Makefile.test report"
+
+#------------------------------------------------------------------------------
+# Vérification des outils
+#------------------------------------------------------------------------------
+
+check-deps:
+	@echo "━━━ Vérification des outils ━━━"
+	@which valgrind > /dev/null 2>&1 && echo "✓ valgrind" || echo "✗ valgrind manquant (sudo pacman -S valgrind)"
+	@which perf     > /dev/null 2>&1 && echo "✓ perf"     || echo "✗ perf manquant (sudo pacman -S perf debuginfod)"
+	@which gprof    > /dev/null 2>&1 && echo "✓ gprof"    || echo "✗ gprof manquant (sudo pacman -S binutils)"
+	@echo ""
+
+#------------------------------------------------------------------------------
+# ASan + UBSan
+#------------------------------------------------------------------------------
+
+asan: $(BIN_DIR) $(REPORT_DIR)
+	@echo "━━━ Build ASan + UBSan ━━━"
+	$(CC) $(SRC) $(CFLAGS) $(ASAN_FLAGS) $(LIBS) -o $(BIN_DIR)/proj1_asan
+	@echo "✓ Build OK : $(BIN_DIR)/proj1_asan"
+	@echo ""
+	@echo "━━━ Run ASan ($(RUN_DURATION)s) ━━━"
+	@echo "Ferme la fenêtre ou attends $(RUN_DURATION)s..."
+	ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:log_path=$(REPORT_DIR)/asan.log \
+	UBSAN_OPTIONS=print_stacktrace=1:log_path=$(REPORT_DIR)/ubsan.log \
+	timeout $(RUN_DURATION) $(BIN_DIR)/proj1_asan || true
+	@echo ""
+	@echo "━━━ Rapport ASan ━━━"
+	@if compgen -G "$(REPORT_DIR)/asan.log.*" > /dev/null 2>&1; then \
+		echo "⚠ Problèmes détectés — voir $(REPORT_DIR)/asan.log.*"; \
+		ls $(REPORT_DIR)/asan.log.*; \
+	else \
+		echo "✓ Aucun problème mémoire détecté"; \
+	fi
+	@echo ""
+	@echo "━━━ Rapport UBSan ━━━"
+	@if compgen -G "$(REPORT_DIR)/ubsan.log.*" > /dev/null 2>&1; then \
+		echo "⚠ Comportement indéfini détecté — voir $(REPORT_DIR)/ubsan.log.*"; \
+		ls $(REPORT_DIR)/ubsan.log.*; \
+	else \
+		echo "✓ Aucun comportement indéfini détecté"; \
+	fi
+
+#------------------------------------------------------------------------------
+# Valgrind
+#------------------------------------------------------------------------------
+
+valgrind: $(BIN_DIR) $(REPORT_DIR)
+	@which valgrind > /dev/null || (echo "❌ valgrind non installé" && exit 1)
+	@echo "━━━ Build Valgrind ━━━"
+	$(CC) $(SRC) $(CFLAGS) $(VALGRIND_FLAGS) $(LIBS) -o $(BIN_DIR)/proj1_valgrind
+	@echo "✓ Build OK : $(BIN_DIR)/proj1_valgrind"
+	@echo ""
+	@echo "━━━ Run Valgrind ($(RUN_DURATION)s) ━━━"
+	@echo "Ferme la fenêtre ou attends $(RUN_DURATION)s..."
+	timeout $(RUN_DURATION) \
+	valgrind \
+		--leak-check=full \
+		--show-leak-kinds=all \
+		--track-origins=yes \
+		--error-exitcode=1 \
+		--log-file=$(REPORT_DIR)/valgrind.log \
+		$(BIN_DIR)/proj1_valgrind || true
+	@echo ""
+	@echo "━━━ Résumé Valgrind ━━━"
+	@grep -A 10 "LEAK SUMMARY"  $(REPORT_DIR)/valgrind.log 2>/dev/null || true
+	@grep -A 5  "ERROR SUMMARY" $(REPORT_DIR)/valgrind.log 2>/dev/null || true
+	@grep "All heap blocks were freed" $(REPORT_DIR)/valgrind.log \
+		&& echo "✓ Parfait : toute la mémoire est libérée" || true
+	@echo "Rapport complet : $(REPORT_DIR)/valgrind.log"
+
+#------------------------------------------------------------------------------
+# perf record
+#------------------------------------------------------------------------------
+
+perf: $(BIN_DIR) $(REPORT_DIR)
+	@which perf > /dev/null || (echo "❌ perf non installé (sudo pacman -S perf debuginfod)" && exit 1)
+	@echo "━━━ Build perf ━━━"
+	$(CC) $(SRC) $(CFLAGS) $(PERF_FLAGS) $(LIBS) -o $(BIN_DIR)/proj1_perf
+	@echo "✓ Build OK : $(BIN_DIR)/proj1_perf"
+	@echo ""
+	@echo "━━━ Run perf record ($(RUN_DURATION)s) ━━━"
+	@echo "Ferme la fenêtre ou attends $(RUN_DURATION)s..."
+	timeout $(RUN_DURATION) \
+	perf record -g -o $(REPORT_DIR)/perf.data $(BIN_DIR)/proj1_perf || true
+	@echo ""
+	@echo "━━━ Rapport perf top fonctions ━━━"
+	perf report -i $(REPORT_DIR)/perf.data --stdio --no-children --sort symbol \
+		2>/dev/null | head -40 | tee $(REPORT_DIR)/perf_report.txt
+	@echo ""
+	@echo "Rapport interactif : make -f Makefile.test perf-report"
+
+perf-report:
+	@test -f $(REPORT_DIR)/perf.data || \
+		(echo "❌ Pas de données — lance 'make -f Makefile.test perf' d'abord" && exit 1)
+	perf report -i $(REPORT_DIR)/perf.data -g
+
+#------------------------------------------------------------------------------
+# gprof
+#------------------------------------------------------------------------------
+
+gprof: $(BIN_DIR) $(REPORT_DIR)
+	@which gprof > /dev/null || (echo "❌ gprof non installé" && exit 1)
+	@echo "━━━ Build gprof ━━━"
+	$(CC) $(SRC) $(CFLAGS) $(GPROF_FLAGS) $(LIBS) -o $(BIN_DIR)/proj1_gprof
+	@echo "✓ Build OK : $(BIN_DIR)/proj1_gprof"
+	@echo ""
+	@echo "━━━ Run gprof ($(RUN_DURATION)s) ━━━"
+	@echo "Ferme la fenêtre ou attends $(RUN_DURATION)s..."
+	timeout $(RUN_DURATION) $(BIN_DIR)/proj1_gprof || true
+	@echo ""
+	@echo "━━━ Rapport gprof ━━━"
+	@test -f gmon.out || (echo "❌ gmon.out non généré" && exit 1)
+	gprof $(BIN_DIR)/proj1_gprof gmon.out > $(REPORT_DIR)/gprof_report.txt
+	@echo "━━━ Top 20 fonctions les plus lentes ━━━"
+	head -40 $(REPORT_DIR)/gprof_report.txt
+	@echo ""
+	@echo "Rapport complet : $(REPORT_DIR)/gprof_report.txt"
+
+#------------------------------------------------------------------------------
+# Rapport global
+#------------------------------------------------------------------------------
+
+report:
+	@echo "╔════════════════════════════════════════════════════════════╗"
+	@echo "║              PROJ1 — RAPPORTS DE TEST                      ║"
+	@echo "╚════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "━━━ ASan ━━━"
+	@if compgen -G "$(REPORT_DIR)/asan.log.*" > /dev/null 2>&1; then \
+		echo "⚠ Problèmes détectés"; \
+		ls $(REPORT_DIR)/asan.log.*; \
+	else \
+		echo "✓ Aucun problème (ou pas encore exécuté)"; \
+	fi
+	@echo ""
+	@echo "━━━ UBSan ━━━"
+	@if compgen -G "$(REPORT_DIR)/ubsan.log.*" > /dev/null 2>&1; then \
+		echo "⚠ Problèmes détectés"; \
+	else \
+		echo "✓ Aucun problème"; \
+	fi
+	@echo ""
+	@echo "━━━ Valgrind ━━━"
+	@if [ -f $(REPORT_DIR)/valgrind.log ]; then \
+		grep "ERROR SUMMARY" $(REPORT_DIR)/valgrind.log || true; \
+		grep "LEAK SUMMARY" -A 5 $(REPORT_DIR)/valgrind.log || true; \
+	else \
+		echo "Pas encore exécuté"; \
+	fi
+	@echo ""
+	@echo "━━━ perf ━━━"
+	@if [ -f $(REPORT_DIR)/perf_report.txt ]; then \
+		head -20 $(REPORT_DIR)/perf_report.txt; \
+	else \
+		echo "Pas encore exécuté"; \
+	fi
+	@echo ""
+	@echo "━━━ gprof ━━━"
+	@if [ -f $(REPORT_DIR)/gprof_report.txt ]; then \
+		head -20 $(REPORT_DIR)/gprof_report.txt; \
+	else \
+		echo "Pas encore exécuté"; \
+	fi
+
+#------------------------------------------------------------------------------
+# Création des dossiers
+#------------------------------------------------------------------------------
+
+$(BIN_DIR):
+	@mkdir -p $(BIN_DIR)
+
+$(REPORT_DIR):
+	@mkdir -p $(REPORT_DIR)
+
+#------------------------------------------------------------------------------
+# Nettoyage
+#------------------------------------------------------------------------------
+
+clean:
+	@rm -rf $(BIN_DIR) $(REPORT_DIR) gmon.out
+	@echo "✓ Clean OK"
