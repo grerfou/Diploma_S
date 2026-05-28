@@ -23,11 +23,11 @@
 #define APP_CONFIG_A            "config/surface_a.cfg"
 #define APP_CONFIG_B            "config/surface_b.cfg"
 
-#define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.mp4"
+#define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.webm"
 #define APP_VIDEO_RT_BG_A       "assets/video/rt_bg_a.mp4"
-#define APP_VIDEO_RT_FG_A       "assets/video/rt_fg_a.webm"
+#define APP_VIDEO_RT_FG_A       "assets/video/rt_fg_a.mp4"
 #define APP_VIDEO_RT_BG_B       "assets/video/rt_bg_b.mp4"
-#define APP_VIDEO_RT_FG_B       "assets/video/rt_fg_b.webm"
+#define APP_VIDEO_RT_FG_B       "assets/video/rt_fg_b.mp4"
 
 //--------------------------------------------------------------------------------------
 // Enums

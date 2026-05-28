@@ -29,7 +29,7 @@ bool AppInit(AppState *app)
     // Fenêtre
     SetConfigFlags(FLAG_WINDOW_UNDECORATED);
     InitWindow(APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT, "proj2");
-    SetWindowPosition(1920, 0);  // Projecteur 2 — écran à droite
+    SetWindowPosition(4480, 0);  // Projecteur 2 — écran à droite
     SetTargetFPS(APP_TARGET_FPS);
 
     // État initial
@@ -115,7 +115,7 @@ bool AppInit(AppState *app)
     }
 
     // Synchronisation démarrage
-    SyncHandle *sync = SyncOpen(SYNC_ROLE_PROJ1); // PROJ2 pour proj2
+    SyncHandle *sync = SyncOpen(SYNC_ROLE_PROJ2); // PROJ2 pour proj2
     if (sync) {
         SyncSignalReady(sync);
         SyncWaitGo(sync);
@@ -250,6 +250,8 @@ void AppUpdate(AppState *app, float dt)
         // Switch auto vers REALTIME en fin de vidéo
         if (RMV_GetVideoState(app->surfaces[0].videoPrerecorded) == RMV_STATE_STOPPED) {
             for (int i = 0; i < 2; i++) {
+		RMV_StopVideo(app->surfaces[i].videoBg);   // ← ajouter
+        	RMV_StopVideo(app->surfaces[i].videoFg);
                 RMV_PlayVideo(app->surfaces[i].videoBg);
                 RMV_PlayVideo(app->surfaces[i].videoFg);
             }

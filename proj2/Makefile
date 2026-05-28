@@ -5,8 +5,8 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -std=c99 -I./src -I../lib \
          -Wno-unused-function \
-         -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
-LIBS   = -lraylib -lm -lpthread -ldl -lavcodec -lavformat -lavutil -lswscale
+
+LIBS   = -lraylib -lm -lpthread -ldl -lavcodec -lavformat -lavutil -lswscale -lrt
 
 DEBUG_FLAGS   = -g -O0 -DDEBUG
 RELEASE_FLAGS = -O1 -DNDEBUG
@@ -33,7 +33,7 @@ $(BUILD_DIR):
 
 $(TARGET): $(SRC)
 	$(CC) $(SRC) $(CFLAGS) $(RELEASE_FLAGS) $(LIBS) -o $(TARGET)
-	@echo "✓ Build OK (ASan actif) : $(TARGET)"
+	@echo "✓ Build OK : $(TARGET)"
 
 debug: $(BUILD_DIR)
 	$(CC) $(SRC) $(CFLAGS) $(DEBUG_FLAGS) $(LIBS) -o $(TARGET)

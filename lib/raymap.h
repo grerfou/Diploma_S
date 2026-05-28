@@ -829,6 +829,7 @@ static void rm_GenerateBilinearMesh(RM_Surface *surface, int cols, int rows)
     
     // replace newMesh
     surface->mesh = newMesh;
+    TraceLog(LOG_WARNING, "RAYMAP: MESH REGEN");
     surface->meshNeedsUpdate = false;
     
     TraceLog(LOG_INFO, "RAYMAP: Mesh generated successfully [%d vertices, %d triangles]",

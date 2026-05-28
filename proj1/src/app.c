@@ -19,7 +19,7 @@ bool AppInit(AppState *app)
     // Fenêtre
     SetConfigFlags(FLAG_WINDOW_UNDECORATED);
     InitWindow(APP_SCREEN_WIDTH, APP_SCREEN_HEIGHT, "proj1");
-    SetWindowPosition(0, 0);
+    SetWindowPosition(2560, 0);
     SetTargetFPS(APP_TARGET_FPS);
 
     // État initial
@@ -226,6 +226,8 @@ void AppUpdate(AppState *app, float dt)
     // Switch auto vers REALTIME quand la vidéo pré-enregistrée est terminée
     if (app->mode == MODE_PRERECORDED &&
         RMV_GetVideoState(app->surf.videoPrerecorded) == RMV_STATE_STOPPED) {
+	RMV_StopVideo(app->surf.videoBg);    // ← ajouter
+    	RMV_StopVideo(app->surf.videoFg);
         RMV_PlayVideo(app->surf.videoBg);
         RMV_PlayVideo(app->surf.videoFg);
         app->mode = MODE_REALTIME;

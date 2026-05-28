@@ -97,11 +97,11 @@ fi
 
 # Lancement des programmes depuis leur propre dossier
 echo "→ Lancement proj1 (projecteur 1)..."
-(cd proj1 && ASAN_OPTIONS=detect_leaks=1:halt_on_error=0 ./bin/proj1) &
+(cd proj1 && ./bin/proj1) &
 PID1=$!
 
 echo "→ Lancement proj2 (projecteur 2)..."
-(cd proj2 && ASAN_OPTIONS=detect_leaks=1:halt_on_error=0 ./bin/proj2) &
+(cd proj2 && ./bin/proj2) &
 PID2=$!
 
 echo "→ PID proj1: $PID1"

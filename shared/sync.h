@@ -32,7 +32,7 @@
 //------------------------------------------------------------------------------
 
 #define SYNC_SHM_NAME   "/raymap_sync"   // Nom de la zone mémoire partagée
-#define SYNC_TIMEOUT_MS  60000           // Timeout d'attente en ms (10s)
+#define SYNC_TIMEOUT_MS  10000           // Timeout d'attente en ms (10s)
 
 //------------------------------------------------------------------------------
 // Rôles

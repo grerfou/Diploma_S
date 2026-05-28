@@ -21,8 +21,8 @@
 
 #define APP_CONFIG          "config/surface.cfg"
 
-#define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.mp4"
-#define APP_VIDEO_RT_BG         "assets/video/rt_bg.mp4"
+#define APP_VIDEO_PRERECORDED   "assets/video/prerecorded.webm"
+#define APP_VIDEO_RT_BG         "assets/video/rt_bg.webm"
 #define APP_VIDEO_RT_FG         "assets/video/output_new.webm"
 
 //--------------------------------------------------------------------------------------

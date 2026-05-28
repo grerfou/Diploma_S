@@ -572,12 +572,14 @@ RMVAPI void RMV_UpdateVideo(RMV_Video *video, float deltaTime) {
                 if (ret == AVERROR_EOF) {
                     TraceLog(LOG_INFO, "RAYMAPVID: EOF");
                     if (video->loop) {
-                        av_seek_frame(video->formatCtx, video->videoStreamIndex,
-                                      0, AVSEEK_FLAG_BACKWARD);
+                        //av_seek_frame(video->formatCtx, video->videoStreamIndex,
+                          //            0, AVSEEK_FLAG_BACKWARD);
+			avformat_seek_file(video->formatCtx, -1, INT64_MIN, 0, INT64_MAX, 0);
                         avcodec_flush_buffers(video->codecCtx);
                         video->currentTime      = 0.0f;
                         video->frameAccumulator = 0.0f;
-                        continue;
+                        //continue;
+			break;
                     } else {
                         video->state            = RMV_STATE_STOPPED;
                         video->currentTime      = 0.0f;
@@ -691,10 +693,24 @@ RMVAPI void RMV_PauseVideo(RMV_Video *video) {
     TraceLog(LOG_INFO, "RAYMAPVID: Paused");
 }
 
+/*
 RMVAPI void RMV_StopVideo(RMV_Video *video) {
     if (!rmv_ValidateVideo(video, "RMV_StopVideo")) return;
     video->state       = RMV_STATE_STOPPED;
     video->currentTime = 0.0f;
+    TraceLog(LOG_INFO, "RAYMAPVID: Stopped");
+}*/
+
+RMVAPI void RMV_StopVideo(RMV_Video *video) {
+    if (!rmv_ValidateVideo(video, "RMV_StopVideo")) return;
+    video->state            = RMV_STATE_STOPPED;
+    video->currentTime      = 0.0f;
+    video->frameAccumulator = 0.0f;
+    video->alphaConfirmed   = false;
+    if (video->formatCtx && video->codecCtx) {
+        avformat_seek_file(video->formatCtx, -1, INT64_MIN, 0, INT64_MAX, 0);
+        //avcodec_flush_buffers(video->codecCtx);
+    }
     TraceLog(LOG_INFO, "RAYMAPVID: Stopped");
 }
 
